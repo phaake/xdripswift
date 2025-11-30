@@ -1,49 +1,57 @@
-name: 🔑 Manual Code Signing Renewal
+name: 🔑 Manual Fastlane Match Renewal
 
 on:
+  # Allows you to manually trigger the workflow from the GitHub Actions UI
   workflow_dispatch:
     inputs:
       type:
         description: 'Certificate type to renew (appstore or development)'
         required: true
         default: 'appstore'
+      reason:
+        description: 'Brief reason for renewal (e.g., "Expired App Store Cert")'
+        required: false
 
 jobs:
   renew_signing_material:
-    runs-on: macos-latest  # Must be a Mac runner for iOS code signing
+    # macOS runner is essential for iOS signing tools
+    runs-on: macos-latest
 
+    # All necessary secrets are passed as environment variables
     env:
-      # CRITICAL: These MUST be set correctly as secrets in your repo
+      # CRITICAL: Fix for "Missing username" error
+      FASTLANE_USER: ${{ secrets.FASTLANE_USER }} 
+      
+      # App Store Connect API Key for communication with Apple
       FASTLANE_ISSUER_ID: ${{ secrets.FASTLANE_ISSUER_ID }}
       FASTLANE_KEY_ID: ${{ secrets.FASTLANE_KEY_ID }}
       FASTLANE_KEY: ${{ secrets.FASTLANE_KEY }}
       
-      # Match Repo Authentication (You need to clone the Match repository to push changes)
-      # Use a GitHub Personal Access Token (PAT) with 'repo' scope
+      # Match Repository Authentication (already fixed, but required)
       MATCH_GIT_BASIC_AUTHORIZATION: ${{ secrets.MATCH_GIT_BASIC_AUTHORIZATION }}
-      MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }} # Match repository passphrase
+      MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
 
     steps:
-      - name: Checkout Code
+      - name: ⬇️ Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Setup Ruby and Dependencies
+      - name: 💎 Setup Ruby and Bundle Dependencies
         uses: ruby/setup-ruby@v1
         with:
-          ruby-version: '3.3' # Or the version used in your main project
-          bundler-cache: true # Install Gemfile dependencies
+          # Ensure this version matches your Gemfile.lock
+          ruby-version: '3.3' 
+          bundler-cache: true 
 
-      - name: 🔄 Renew Certificate and Profiles
+      - name: 🔄 Run Fastlane Match Renewal
         run: |
-          # The match command that forces the renewal
+          echo "Starting certificate and profile renewal for type: ${{ github.event.inputs.type }}"
+          # --readonly false allows match to perform the renewal and push the new files to Git.
           bundle exec fastlane match ${{ github.event.inputs.type }} \
             --force \
             --readonly false \
             --verbose
-        env:
-          # Optional: Override the git authorization if not set as a main env
-          MATCH_GIT_BASIC_AUTHORIZATION: ${{ secrets.MATCH_GIT_BASIC_AUTHORIZATION }}
-
+        
       - name: ✅ Clean up Keychain
         if: always()
-        run: fastlane run delete_keychains
+        # CRITICAL: Using 'bundle exec' fixes the "fastlane: command not found" error
+        run: bundle exec fastlane run delete_keychains

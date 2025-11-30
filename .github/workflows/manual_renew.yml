@@ -1,0 +1,49 @@
+name: 🔑 Manual Code Signing Renewal
+
+on:
+  workflow_dispatch:
+    inputs:
+      type:
+        description: 'Certificate type to renew (appstore or development)'
+        required: true
+        default: 'appstore'
+
+jobs:
+  renew_signing_material:
+    runs-on: macos-latest  # Must be a Mac runner for iOS code signing
+
+    env:
+      # CRITICAL: These MUST be set correctly as secrets in your repo
+      FASTLANE_ISSUER_ID: ${{ secrets.FASTLANE_ISSUER_ID }}
+      FASTLANE_KEY_ID: ${{ secrets.FASTLANE_KEY_ID }}
+      FASTLANE_KEY: ${{ secrets.FASTLANE_KEY }}
+      
+      # Match Repo Authentication (You need to clone the Match repository to push changes)
+      # Use a GitHub Personal Access Token (PAT) with 'repo' scope
+      MATCH_GIT_BASIC_AUTHORIZATION: ${{ secrets.MATCH_GIT_BASIC_AUTHORIZATION }}
+      MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }} # Match repository passphrase
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Ruby and Dependencies
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3' # Or the version used in your main project
+          bundler-cache: true # Install Gemfile dependencies
+
+      - name: 🔄 Renew Certificate and Profiles
+        run: |
+          # The match command that forces the renewal
+          bundle exec fastlane match ${{ github.event.inputs.type }} \
+            --force \
+            --readonly false \
+            --verbose
+        env:
+          # Optional: Override the git authorization if not set as a main env
+          MATCH_GIT_BASIC_AUTHORIZATION: ${{ secrets.MATCH_GIT_BASIC_AUTHORIZATION }}
+
+      - name: ✅ Clean up Keychain
+        if: always()
+        run: fastlane run delete_keychains
